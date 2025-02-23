@@ -55,6 +55,27 @@ class DeckyDictationLogic {
 		}
 	}
 
+	/*
+	Steam Deck Controller Buttons:
+	R2 0
+	L2 1
+	R1 2
+	R2 3
+	Y  4
+	B  5
+	X  6
+	A  7
+	UP 8
+	Right 9
+	Left 10
+	Down 11
+	Select 12
+	Steam 13
+	Start 14
+	QAM  ???
+	L5 15
+	R5 16
+	*/
 	handlePushToDictate = async (val: any[]) => {
 		for (const inputs of val) {
 			if (inputs.ulButtons && inputs.ulButtons & (1 << 15)) {
