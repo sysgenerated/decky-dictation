@@ -1,37 +1,42 @@
 import {
-	definePlugin,
 	PanelSection,
 	PanelSectionRow,
-	ServerAPI,
-	quickAccessMenuClasses,
-	Router,
 	ToggleField,
-} from "decky-frontend-lib";
-
+	staticClasses
+} from "@decky/ui";
 import {
-	VFC,
-	useEffect,
-	useState,
-} from "react";
-
+	callable,
+	definePlugin,
+	toaster,
+} from "@decky/api";
+import { FC, useState, useEffect } from "react";
 import { FaComment } from "react-icons/fa";
 
+// Add TypeScript declarations
+declare global {
+	interface Window {
+		SteamClient: {
+			Input: {
+				RegisterForControllerStateChanges: (callback: (val: any[]) => void) => { unregister: () => void }
+			}
+		}
+	}
+}
+
+const beginDictation = callable<[push_to_dictate: boolean], void>("begin_dictation");
+const endDictation = callable<[], void>("end_dictation");
+
 class DeckyDictationLogic {
-	serverAPI: ServerAPI;
 	pressedAt: number = Date.now();
 	enabled: boolean = false;
 	dictating = false;
 	pushToDictate = false;
 
-	constructor(serverAPI: ServerAPI) {
-		this.serverAPI = serverAPI;
-	}
-
 	notify = async (message: string, duration: number = 1000, body: string = "") => {
 		if (!body) {
 			body = message;
 		}
-		this.serverAPI.toaster.toast({
+		toaster.toast({
 			title: message,
 			body: body,
 			duration: duration,
@@ -48,25 +53,6 @@ class DeckyDictationLogic {
 		} else {
 			this.handleToggleMode(val);
 		}
-		/*
-		R2 0
-		L2 1
-		R1 2
-		R2 3
-		Y  4
-		B  5
-		X  6
-		A  7
-		UP 8
-		Right 9
-		Left 10
-		Down 11
-		Select 12
-		Steam 13
-		Start 14
-		QAM  ???
-		L5 15
-		R5 16*/
 	}
 
 	handlePushToDictate = async (val: any[]) => {
@@ -74,12 +60,12 @@ class DeckyDictationLogic {
 			if (inputs.ulButtons && inputs.ulButtons & (1 << 15)) {
 				if (!this.dictating) {
 					this.dictating = true;
-					this.serverAPI.callPluginMethod('begin', { push_to_dictate: true });
+					beginDictation(true);
 					this.notify("Decky Dictation", 2000, "Starting speech to text input");
 				}
 			} else if (this.dictating) {
 				this.dictating = false;
-				await this.serverAPI.callPluginMethod('end', {});
+				await endDictation();
 				this.notify("Decky Dictation", 2000, "Ending speech to text input");
 			}
 		}
@@ -92,27 +78,21 @@ class DeckyDictationLogic {
 			}
 			if (inputs.ulButtons && inputs.ulButtons & (1 << 15)) {
 				this.pressedAt = Date.now();
-				(Router as any).DisableHomeAndQuickAccessButtons();
-				setTimeout(() => {
-					(Router as any).EnableHomeAndQuickAccessButtons();
-				}, 1000)
-				this.serverAPI.callPluginMethod('begin', { push_to_dictate: false });
+				this.dictating = true;
+				beginDictation(false);
 				await this.notify("Decky Dictation", 2000, "Starting speech to text input");
 			}
-			if (inputs.ulButtons && inputs.ulButtons & (1 << 16)) {
+			if (inputs.ulButtons && inputs.ulButtons & (1 << 16) && this.dictating) {
 				this.pressedAt = Date.now();
-				(Router as any).DisableHomeAndQuickAccessButtons();
-				setTimeout(() => {
-					(Router as any).EnableHomeAndQuickAccessButtons();
-				}, 1000)
-				this.serverAPI.callPluginMethod('end', {});
+				this.dictating = false;
+				endDictation();
 				await this.notify("Decky Dictation", 2000, "Ending speech to text input");
 			}
 		}
 	}
 }
 
-const DeckyDictation: VFC<{ logic: DeckyDictationLogic }> = ({ logic }) => {
+const DeckyDictation: FC<{ logic: DeckyDictationLogic }> = ({ logic }) => {
 	const [enabled, setEnabled] = useState<boolean>(false);
 	const [pushToDictate, setPushToDictate] = useState<boolean>(false);
 
@@ -135,7 +115,7 @@ const DeckyDictation: VFC<{ logic: DeckyDictationLogic }> = ({ logic }) => {
 					<ToggleField
 						label="Push To Dictate"
 						checked={pushToDictate}
-						disabled={enabled}
+						disabled={!enabled}
 						onChange={(e) => { setPushToDictate(e); logic.pushToDictate = e; }}
 					/>
 				</PanelSectionRow>
@@ -156,17 +136,17 @@ const DeckyDictation: VFC<{ logic: DeckyDictationLogic }> = ({ logic }) => {
 	);
 };
 
+export default definePlugin(() => {
+	const logic = new DeckyDictationLogic();
+	const input_register = window.SteamClient.Input.RegisterForControllerStateChanges(logic.handleButtonInput);
 
-export default definePlugin((serverApi: ServerAPI) => {
-	let logic = new DeckyDictationLogic(serverApi);
-	let input_register = window.SteamClient.Input.RegisterForControllerStateChanges(logic.handleButtonInput);
 	return {
-		title: <div className={quickAccessMenuClasses.Title}>Decky Dictation</div>,
+		name: "Decky Dictation",
+		titleView: <div className={staticClasses.Title}>Decky Dictation</div>,
 		content: <DeckyDictation logic={logic} />,
 		icon: <FaComment />,
 		onDismount() {
 			input_register.unregister();
 		},
-		alwaysRender: true
 	};
 });
