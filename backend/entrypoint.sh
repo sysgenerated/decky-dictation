@@ -7,7 +7,6 @@ cd /backend
 cp -r /vosk_libraries /backend/out/
 
 # Setup nerd-dictation
-mv /nerd-dictation/nerd-dictation /nerd-dictation/nerd-dictation.py
 cp -r /nerd-dictation /backend/out/
 
 # Copy Vosk model

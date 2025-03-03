@@ -2,7 +2,9 @@ import {
 	PanelSection,
 	PanelSectionRow,
 	ToggleField,
-	staticClasses
+	staticClasses,
+	Dropdown,
+	SingleDropdownOption
 } from "@decky/ui";
 import {
 	callable,
@@ -26,7 +28,35 @@ declare global {
 const beginDictation = callable<[push_to_dictate: boolean], void>("begin_dictation");
 const endDictation = callable<[], void>("end_dictation");
 
+// Define an interface for the button mapping
+interface ButtonMapping {
+	[key: string]: number;
+}
+
 class DeckyDictationLogic {
+	// Button mapping with name and bit position
+	BUTTON_MAPPING: ButtonMapping = {
+		"R2": 0,
+		"L2": 1,
+		"R1": 2,
+		"L1": 3,
+		"Y": 4,
+		"B": 5,
+		"X": 6,
+		"A": 7,
+		"D-Pad Up": 8,
+		"D-Pad Right": 9,
+		"D-Pad Left": 10,
+		"D-Pad Down": 11,
+		"View": 12,
+		"Steam": 13,
+		"Menu": 14,
+		"L5": 15,
+		"R5": 16
+	};
+	
+	// Default to L5
+	selectedButton: string = "L5";
 	pressedAt: number = Date.now();
 	enabled: boolean = false;
 	dictating = false;
@@ -55,30 +85,11 @@ class DeckyDictationLogic {
 		}
 	}
 
-	/*
-	Steam Deck Controller Buttons:
-	R2 0
-	L2 1
-	R1 2
-	R2 3
-	Y  4
-	B  5
-	X  6
-	A  7
-	UP 8
-	Right 9
-	Left 10
-	Down 11
-	Select 12
-	Steam 13
-	Start 14
-	QAM  ???
-	L5 15
-	R5 16
-	*/
 	handlePushToDictate = async (val: any[]) => {
+		const selectedBit = this.BUTTON_MAPPING[this.selectedButton];
+		
 		for (const inputs of val) {
-			if (inputs.ulButtons && inputs.ulButtons & (1 << 15)) {
+			if (inputs.ulButtons && inputs.ulButtons & (1 << selectedBit)) {
 				if (!this.dictating) {
 					this.dictating = true;
 					beginDictation(true);
@@ -93,21 +104,28 @@ class DeckyDictationLogic {
 	}
 
 	handleToggleMode = async (val: any[]) => {
+		const selectedBit = this.BUTTON_MAPPING[this.selectedButton];
+		
 		for (const inputs of val) {
 			if (Date.now() - this.pressedAt < 2000) {
 				continue;
 			}
-			if (inputs.ulButtons && inputs.ulButtons & (1 << 15)) {
+			
+			// Use the same button for both starting and stopping
+			if (inputs.ulButtons && inputs.ulButtons & (1 << selectedBit)) {
 				this.pressedAt = Date.now();
-				this.dictating = true;
-				beginDictation(false);
-				await this.notify("Decky Dictation", 2000, "Starting speech to text input");
-			}
-			if (inputs.ulButtons && inputs.ulButtons & (1 << 16) && this.dictating) {
-				this.pressedAt = Date.now();
-				this.dictating = false;
-				endDictation();
-				await this.notify("Decky Dictation", 2000, "Ending speech to text input");
+				
+				if (!this.dictating) {
+					// Start dictation
+					this.dictating = true;
+					beginDictation(false);
+					await this.notify("Decky Dictation", 2000, "Starting speech to text input");
+				} else {
+					// Stop dictation
+					this.dictating = false;
+					endDictation();
+					await this.notify("Decky Dictation", 2000, "Ending speech to text input");
+				}
 			}
 		}
 	}
@@ -116,10 +134,18 @@ class DeckyDictationLogic {
 const DeckyDictation: FC<{ logic: DeckyDictationLogic }> = ({ logic }) => {
 	const [enabled, setEnabled] = useState<boolean>(false);
 	const [pushToDictate, setPushToDictate] = useState<boolean>(false);
+	const [selectedButton, setSelectedButton] = useState<string>(logic.selectedButton);
+	
+	// Create dropdown options from the button mapping
+	const buttonOptions = Object.keys(logic.BUTTON_MAPPING).map(button => ({
+		data: button,
+		label: button
+	}));
 
 	useEffect(() => {
 		setEnabled(logic.enabled);
 		setPushToDictate(logic.pushToDictate);
+		setSelectedButton(logic.selectedButton);
 	}, []);
 
 	return (
@@ -140,15 +166,30 @@ const DeckyDictation: FC<{ logic: DeckyDictationLogic }> = ({ logic }) => {
 						onChange={(e) => { setPushToDictate(e); logic.pushToDictate = e; }}
 					/>
 				</PanelSectionRow>
+				<PanelSectionRow>
+					<Dropdown
+						menuLabel="Dictation Button"
+						strDefaultLabel="Select Button"
+						disabled={!enabled}
+						rgOptions={buttonOptions}
+						selectedOption={selectedButton}
+						onChange={(e: SingleDropdownOption) => { 
+							const buttonName = e.data as string;
+							setSelectedButton(buttonName); 
+							logic.selectedButton = buttonName; 
+						}}
+					/>
+				</PanelSectionRow>
 			</PanelSection>
 			<PanelSection title="How to use:">
 				<PanelSectionRow>
 					<div>
-						L5 to begin speech to text input, hold if "Push To Dictate" is enabled.
-						<br />
-						R5 to end speech to text input if "Push To Dictate" is disabled.
+						Press {selectedButton} to {pushToDictate ? "hold while speaking" : "toggle"} speech to text input.
+						{!pushToDictate && <span><br />Press {selectedButton} again to stop dictation.</span>}
+						{pushToDictate && <span><br />Release {selectedButton} to stop dictation.</span>}
 					</div>
 					<div>
+						<br />
 						Currently this plugin only works in a game (first opened game if you have more opened at once; not working in home, store or steam chat ui etc).
 					</div>
 				</PanelSectionRow>

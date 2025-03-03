@@ -12,12 +12,12 @@ os.environ["XDG_RUNTIME_DIR"] = f"/run/user/{os.getuid()}"
 
 class Plugin:
     def __init__(self):
-        pass
+        self.dictator = Dictator()
 
     async def begin_dictation(self, push_to_dictate: bool):
         try:
             decky.logger.info("Starting dictation process...")
-            await Dictator.begin_dictation(push_to_dictate)
+            await self.dictator.begin_dictation(push_to_dictate)
             decky.logger.info("Dictation process started successfully")
         except Exception as e:
             await self.end_dictation()
@@ -26,7 +26,7 @@ class Plugin:
 
     async def end_dictation(self):
         try:
-            await Dictator.end_dictation()
+            await self.dictator.end_dictation()
         except Exception:
             decky.logger.error("Failed to stop dictation")
 
